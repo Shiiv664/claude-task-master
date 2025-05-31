@@ -204,7 +204,7 @@ class ClaudeCliProvider {
 		await this.checkAvailability();
 
 		// Use shared prompt generation logic
-		const { systemPrompt } = generatePrdPrompts({
+		const { systemPrompt, userPrompt } = generatePrdPrompts({
 			numTasks,
 			nextId,
 			research,
@@ -212,21 +212,26 @@ class ClaudeCliProvider {
 			prdPath
 		});
 
-		// Execute Claude CLI command
+		// For CLI, use system prompt as command argument and user prompt as stdin
 		const args = [
 			'--print',
 			'--output-format', 'json',
 			systemPrompt
 		];
 
-		const rawOutput = await this.executeCommand(args, prdContent, { timeout });
+		const rawOutput = await this.executeCommand(args, userPrompt, { timeout });
 		const aiContent = this.parseCliResponse(rawOutput);
 		const jsonResponse = this.extractJsonFromContent(aiContent);
 
 		// Validate response with Zod schema
 		try {
 			const validatedResponse = prdResponseSchema.parse(jsonResponse);
-			return validatedResponse;
+			
+			// Return in same structure as generateObjectService
+			return {
+				mainResult: validatedResponse,
+				success: true
+			};
 		} catch (validationError) {
 			throw new Error(`Generated tasks failed validation: ${validationError.message}`);
 		}

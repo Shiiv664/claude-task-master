@@ -5,6 +5,7 @@ import { generateExpandTaskPrompts, subtaskWrapperSchema } from './task-manager/
 import { generateAddTaskPrompts, AiTaskDataSchema } from './task-manager/add-task.js';
 import { generateComplexityAnalysisPrompts } from './task-manager/analyze-task-complexity.js';
 import { generateUpdateSubtaskPrompts } from './task-manager/update-subtask-by-id.js';
+import { generateUpdateTaskPrompts } from './task-manager/update-task-by-id.js';
 
 /**
  * Claude CLI Provider for Task Master
@@ -43,6 +44,18 @@ const complexityAnalysisItemSchema = z.object({
 });
 
 const complexityAnalysisSchema = z.array(complexityAnalysisItemSchema);
+
+const updatedTaskSchema = z.object({
+	id: z.number().int(),
+	title: z.string(),
+	description: z.string(),
+	details: z.string().optional(),
+	testStrategy: z.string().optional(),
+	status: z.string(),
+	dependencies: z.array(z.number().int()).optional(),
+	priority: z.string().optional(),
+	subtasks: z.array(z.any()).optional() // Allow any subtask format for now
+});
 
 class ClaudeCliProvider {
 	constructor() {
@@ -441,6 +454,52 @@ class ClaudeCliProvider {
 			success: true
 		};
 	}
+
+	/**
+	 * Update a task using Claude CLI
+	 * @param {Object} params - Update parameters
+	 */
+	async updateTask(params) {
+		const {
+			taskToUpdate,
+			prompt,
+			useResearch = false,
+			timeout = 120000
+		} = params;
+
+		// Check CLI availability
+		await this.checkAvailability();
+
+		// Use shared prompt generation logic
+		const { systemPrompt, userPrompt } = generateUpdateTaskPrompts({
+			taskToUpdate,
+			prompt
+		});
+
+		// For CLI, use system prompt as command argument and user prompt as stdin
+		const args = [
+			'--print',
+			'--output-format', 'json',
+			systemPrompt
+		];
+
+		const rawOutput = await this.executeCommand(args, userPrompt, { timeout });
+		const aiContent = this.parseCliResponse(rawOutput);
+		const jsonResponse = this.extractJsonFromContent(aiContent);
+
+		// Validate response with Zod schema
+		try {
+			const validatedResponse = updatedTaskSchema.parse(jsonResponse);
+			
+			// Return in same structure as generateTextService
+			return {
+				mainResult: validatedResponse,
+				success: true
+			};
+		} catch (validationError) {
+			throw new Error(`Generated task update failed validation: ${validationError.message}`);
+		}
+	}
 }
 
 // Export singleton instance
@@ -484,6 +543,14 @@ export async function analyzeComplexityWithCli(params) {
  */
 export async function updateSubtaskWithCli(params) {
 	return await claudeCliProvider.updateSubtask(params);
+}
+
+/**
+ * Update task using Claude CLI
+ * Interface compatible with existing generateTextService calls
+ */
+export async function updateTaskWithCli(params) {
+	return await claudeCliProvider.updateTask(params);
 }
 
 export default claudeCliProvider;

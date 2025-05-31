@@ -23,8 +23,10 @@ import {
 import { generateTextService } from '../ai-services-unified.js';
 import {
 	getDebugFlag,
-	isApiKeySet // Keep this check
+	isApiKeySet, // Keep this check
+	isClaudeCliModeEnabled
 } from '../config-manager.js';
+import { updateTaskWithCli } from '../claude-cli-provider.js';
 import generateTaskFiles from './generate-task-files.js';
 
 // Zod schema for post-parsing validation of the updated task object
@@ -197,6 +199,39 @@ function parseUpdatedTaskFromText(text, expectedTaskId, logFn, isMCP) {
 }
 
 /**
+ * Generate system and user prompts for task update
+ * @param {Object} params - Prompt generation parameters
+ * @returns {Object} - { systemPrompt, userPrompt }
+ */
+function generateUpdateTaskPrompts(params) {
+	const { taskToUpdate, prompt } = params;
+
+	const systemPrompt = `You are an AI assistant helping to update a software development task based on new context.
+You will be given a task and a prompt describing changes or new implementation details.
+Your job is to update the task to reflect these changes, while preserving its basic structure.
+
+Guidelines:
+1. VERY IMPORTANT: NEVER change the title of the task - keep it exactly as is
+2. Maintain the same ID, status, and dependencies unless specifically mentioned in the prompt
+3. Update the description, details, and test strategy to reflect the new information
+4. Do not change anything unnecessarily - just adapt what needs to change based on the prompt
+5. Return a complete valid JSON object representing the updated task
+6. VERY IMPORTANT: Preserve all subtasks marked as "done" or "completed" - do not modify their content
+7. For tasks with completed subtasks, build upon what has already been done rather than rewriting everything
+8. If an existing completed subtask needs to be changed/undone based on the new context, DO NOT modify it directly
+9. Instead, add a new subtask that clearly indicates what needs to be changed or replaced
+10. Use the existence of completed subtasks as an opportunity to make new subtasks more specific and targeted
+11. Ensure any new subtasks have unique IDs that don't conflict with existing ones
+
+The changes described in the prompt should be thoughtfully applied to make the task more accurate and actionable.`;
+
+	const taskDataString = JSON.stringify(taskToUpdate, null, 2); // Use original task data
+	const userPrompt = `Here is the task to update:\n${taskDataString}\n\nPlease update this task based on the following new context:\n${prompt}\n\nIMPORTANT: In the task JSON above, any subtasks with "status": "done" or "status": "completed" should be preserved exactly as is. Build your changes around these completed items.\n\nReturn only the updated task as a valid JSON object.`;
+
+	return { systemPrompt, userPrompt };
+}
+
+/**
  * Update a single task by ID using the unified AI service.
  * @param {string} tasksPath - Path to the tasks.json file
  * @param {number} taskId - Task ID to update
@@ -349,29 +384,11 @@ async function updateTaskById(
 			);
 		}
 
-		// --- Build Prompts (Keep EXACT original prompts) ---
-		const systemPrompt = `You are an AI assistant helping to update a software development task based on new context.
-You will be given a task and a prompt describing changes or new implementation details.
-Your job is to update the task to reflect these changes, while preserving its basic structure.
-
-Guidelines:
-1. VERY IMPORTANT: NEVER change the title of the task - keep it exactly as is
-2. Maintain the same ID, status, and dependencies unless specifically mentioned in the prompt
-3. Update the description, details, and test strategy to reflect the new information
-4. Do not change anything unnecessarily - just adapt what needs to change based on the prompt
-5. Return a complete valid JSON object representing the updated task
-6. VERY IMPORTANT: Preserve all subtasks marked as "done" or "completed" - do not modify their content
-7. For tasks with completed subtasks, build upon what has already been done rather than rewriting everything
-8. If an existing completed subtask needs to be changed/undone based on the new context, DO NOT modify it directly
-9. Instead, add a new subtask that clearly indicates what needs to be changed or replaced
-10. Use the existence of completed subtasks as an opportunity to make new subtasks more specific and targeted
-11. Ensure any new subtasks have unique IDs that don't conflict with existing ones
-
-The changes described in the prompt should be thoughtfully applied to make the task more accurate and actionable.`;
-
-		const taskDataString = JSON.stringify(taskToUpdate, null, 2); // Use original task data
-		const userPrompt = `Here is the task to update:\n${taskDataString}\n\nPlease update this task based on the following new context:\n${prompt}\n\nIMPORTANT: In the task JSON above, any subtasks with "status": "done" or "status": "completed" should be preserved exactly as is. Build your changes around these completed items.\n\nReturn only the updated task as a valid JSON object.`;
-		// --- End Build Prompts ---
+		// Generate prompts using shared function
+		const { systemPrompt, userPrompt } = generateUpdateTaskPrompts({
+			taskToUpdate,
+			prompt
+		});
 
 		let loadingIndicator = null;
 		let aiServiceResponse = null;
@@ -382,28 +399,42 @@ The changes described in the prompt should be thoughtfully applied to make the t
 			);
 		}
 
+		let updatedTask;
+
 		try {
-			const serviceRole = useResearch ? 'research' : 'main';
-			aiServiceResponse = await generateTextService({
-				role: serviceRole,
-				session: session,
-				projectRoot: projectRoot,
-				systemPrompt: systemPrompt,
-				prompt: userPrompt,
-				commandName: 'update-task',
-				outputType: isMCP ? 'mcp' : 'cli'
-			});
+			if (isClaudeCliModeEnabled()) {
+				// Use Claude CLI provider
+				aiServiceResponse = await updateTaskWithCli({
+					taskToUpdate,
+					prompt,
+					useResearch
+				});
+				// CLI provider returns already parsed JSON task
+				updatedTask = aiServiceResponse.mainResult;
+			} else {
+				// Use original API-based service
+				const serviceRole = useResearch ? 'research' : 'main';
+				aiServiceResponse = await generateTextService({
+					role: serviceRole,
+					session: session,
+					projectRoot: projectRoot,
+					systemPrompt: systemPrompt,
+					prompt: userPrompt,
+					commandName: 'update-task',
+					outputType: isMCP ? 'mcp' : 'cli'
+				});
 
-			if (loadingIndicator)
-				stopLoadingIndicator(loadingIndicator, 'AI update complete.');
+				if (loadingIndicator)
+					stopLoadingIndicator(loadingIndicator, 'AI update complete.');
 
-			// Use mainResult (text) for parsing
-			const updatedTask = parseUpdatedTaskFromText(
-				aiServiceResponse.mainResult,
-				taskId,
-				logFn,
-				isMCP
-			);
+				// Use mainResult (text) for parsing
+				updatedTask = parseUpdatedTaskFromText(
+					aiServiceResponse.mainResult,
+					taskId,
+					logFn,
+					isMCP
+				);
+			}
 
 			// --- Task Validation/Correction (Keep existing logic) ---
 			if (!updatedTask || typeof updatedTask !== 'object')
@@ -519,3 +550,4 @@ The changes described in the prompt should be thoughtfully applied to make the t
 }
 
 export default updateTaskById;
+export { generateUpdateTaskPrompts };

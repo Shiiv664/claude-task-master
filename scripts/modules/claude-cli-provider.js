@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { z } from 'zod';
 import { generatePrdPrompts } from './task-manager/parse-prd.js';
+import { generateExpandTaskPrompts, subtaskWrapperSchema } from './task-manager/expand-task.js';
 
 /**
  * Claude CLI Provider for Task Master
@@ -236,6 +237,57 @@ class ClaudeCliProvider {
 			throw new Error(`Generated tasks failed validation: ${validationError.message}`);
 		}
 	}
+
+	/**
+	 * Expand a task into subtasks using Claude CLI
+	 * @param {Object} params - Expansion parameters
+	 */
+	async expandTask(params) {
+		const {
+			task,
+			subtaskCount = 3,
+			additionalContext = '',
+			nextSubtaskId = 1,
+			useResearch = false,
+			timeout = 120000
+		} = params;
+
+		// Check CLI availability
+		await this.checkAvailability();
+
+		// Use shared prompt generation logic
+		const { systemPrompt, userPrompt } = generateExpandTaskPrompts({
+			task,
+			subtaskCount,
+			additionalContext,
+			nextSubtaskId,
+			useResearch
+		});
+
+		// For CLI, use system prompt as command argument and user prompt as stdin
+		const args = [
+			'--print',
+			'--output-format', 'json',
+			systemPrompt
+		];
+
+		const rawOutput = await this.executeCommand(args, userPrompt, { timeout });
+		const aiContent = this.parseCliResponse(rawOutput);
+		const jsonResponse = this.extractJsonFromContent(aiContent);
+
+		// Validate response with Zod schema
+		try {
+			const validatedResponse = subtaskWrapperSchema.parse(jsonResponse);
+			
+			// Return in same structure as generateTextService
+			return {
+				mainResult: validatedResponse.subtasks,
+				success: true
+			};
+		} catch (validationError) {
+			throw new Error(`Generated subtasks failed validation: ${validationError.message}`);
+		}
+	}
 }
 
 // Export singleton instance
@@ -247,6 +299,14 @@ export const claudeCliProvider = new ClaudeCliProvider();
  */
 export async function generateTasksWithCli(params) {
 	return await claudeCliProvider.generateTasksFromPrd(params);
+}
+
+/**
+ * Expand task into subtasks using Claude CLI
+ * Interface compatible with existing generateTextService calls
+ */
+export async function expandTaskWithCli(params) {
+	return await claudeCliProvider.expandTask(params);
 }
 
 export default claudeCliProvider;

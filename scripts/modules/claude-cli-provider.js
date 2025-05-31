@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { generatePrdPrompts } from './task-manager/parse-prd.js';
 import { generateExpandTaskPrompts, subtaskWrapperSchema } from './task-manager/expand-task.js';
 import { generateAddTaskPrompts, AiTaskDataSchema } from './task-manager/add-task.js';
+import { generateComplexityAnalysisPrompts } from './task-manager/analyze-task-complexity.js';
 
 /**
  * Claude CLI Provider for Task Master
@@ -30,6 +31,17 @@ const prdResponseSchema = z.object({
 		generatedAt: z.string()
 	})
 });
+
+const complexityAnalysisItemSchema = z.object({
+	taskId: z.number(),
+	taskTitle: z.string(),
+	complexityScore: z.number().min(1).max(10),
+	recommendedSubtasks: z.number(),
+	expansionPrompt: z.string(),
+	reasoning: z.string()
+});
+
+const complexityAnalysisSchema = z.array(complexityAnalysisItemSchema);
 
 class ClaudeCliProvider {
 	constructor() {
@@ -339,6 +351,50 @@ class ClaudeCliProvider {
 			throw new Error(`Generated task failed validation: ${validationError.message}`);
 		}
 	}
+
+	/**
+	 * Analyze task complexity using Claude CLI
+	 * @param {Object} params - Analysis parameters
+	 */
+	async analyzeComplexity(params) {
+		const {
+			tasksData,
+			useResearch = false,
+			timeout = 120000
+		} = params;
+
+		// Check CLI availability
+		await this.checkAvailability();
+
+		// Use shared prompt generation logic
+		const { systemPrompt, userPrompt } = generateComplexityAnalysisPrompts({
+			tasksData
+		});
+
+		// For CLI, use system prompt as command argument and user prompt as stdin
+		const args = [
+			'--print',
+			'--output-format', 'json',
+			systemPrompt
+		];
+
+		const rawOutput = await this.executeCommand(args, userPrompt, { timeout });
+		const aiContent = this.parseCliResponse(rawOutput);
+		const jsonResponse = this.extractJsonFromContent(aiContent);
+
+		// Validate response with Zod schema
+		try {
+			const validatedResponse = complexityAnalysisSchema.parse(jsonResponse);
+			
+			// Return in same structure as generateTextService
+			return {
+				mainResult: validatedResponse,
+				success: true
+			};
+		} catch (validationError) {
+			throw new Error(`Generated complexity analysis failed validation: ${validationError.message}`);
+		}
+	}
 }
 
 // Export singleton instance
@@ -366,6 +422,14 @@ export async function expandTaskWithCli(params) {
  */
 export async function addTaskWithCli(params) {
 	return await claudeCliProvider.addTask(params);
+}
+
+/**
+ * Analyze task complexity using Claude CLI
+ * Interface compatible with existing generateTextService calls
+ */
+export async function analyzeComplexityWithCli(params) {
+	return await claudeCliProvider.analyzeComplexity(params);
 }
 
 export default claudeCliProvider;

@@ -13,7 +13,8 @@ import {
 
 import { generateTextService } from '../ai-services-unified.js';
 
-import { getDebugFlag, getProjectName } from '../config-manager.js';
+import { getDebugFlag, getProjectName, isClaudeCliModeEnabled } from '../config-manager.js';
+import { analyzeComplexityWithCli } from '../claude-cli-provider.js';
 
 /**
  * Generates the prompt for complexity analysis.
@@ -42,6 +43,20 @@ Respond ONLY with a valid JSON array matching the schema:
 ]
 
 Do not include any explanatory text, markdown formatting, or code block markers before or after the JSON array.`;
+}
+
+/**
+ * Generate system and user prompts for complexity analysis
+ * @param {Object} params - Prompt generation parameters
+ * @returns {Object} - { systemPrompt, userPrompt }
+ */
+function generateComplexityAnalysisPrompts(params) {
+	const { tasksData } = params;
+
+	const systemPrompt = 'You are an expert software architect and project manager analyzing task complexity. Respond only with the requested valid JSON array.';
+	const userPrompt = generateInternalComplexityAnalysisPrompt(tasksData);
+
+	return { systemPrompt, userPrompt };
 }
 
 /**
@@ -338,9 +353,9 @@ async function analyzeTaskComplexity(options, context = {}) {
 		}
 
 		// Continue with regular analysis path
-		const prompt = generateInternalComplexityAnalysisPrompt(tasksData);
-		const systemPrompt =
-			'You are an expert software architect and project manager analyzing task complexity. Respond only with the requested valid JSON array.';
+		const { systemPrompt, userPrompt: prompt } = generateComplexityAnalysisPrompts({
+			tasksData
+		});
 
 		let loadingIndicator = null;
 		if (outputFormat === 'text') {
@@ -353,17 +368,28 @@ async function analyzeTaskComplexity(options, context = {}) {
 		let complexityAnalysis = null;
 
 		try {
-			const role = useResearch ? 'research' : 'main';
+			if (isClaudeCliModeEnabled()) {
+				// Use Claude CLI provider
+				aiServiceResponse = await analyzeComplexityWithCli({
+					tasksData,
+					useResearch
+				});
+				// CLI provider returns parsed array directly
+				complexityAnalysis = aiServiceResponse.mainResult;
+			} else {
+				// Use original API-based service
+				const role = useResearch ? 'research' : 'main';
 
-			aiServiceResponse = await generateTextService({
-				prompt,
-				systemPrompt,
-				role,
-				session,
-				projectRoot,
-				commandName: 'analyze-complexity',
-				outputType: mcpLog ? 'mcp' : 'cli'
-			});
+				aiServiceResponse = await generateTextService({
+					prompt,
+					systemPrompt,
+					role,
+					session,
+					projectRoot,
+					commandName: 'analyze-complexity',
+					outputType: mcpLog ? 'mcp' : 'cli'
+				});
+			}
 
 			if (loadingIndicator) {
 				stopLoadingIndicator(loadingIndicator);
@@ -377,57 +403,60 @@ async function analyzeTaskComplexity(options, context = {}) {
 				);
 			}
 
-			reportLog(`Parsing complexity analysis from text response...`, 'info');
-			try {
-				let cleanedResponse = aiServiceResponse.mainResult;
-				cleanedResponse = cleanedResponse.trim();
+			// Only parse response for API-based service
+			if (!isClaudeCliModeEnabled()) {
+				reportLog(`Parsing complexity analysis from text response...`, 'info');
+				try {
+					let cleanedResponse = aiServiceResponse.mainResult;
+					cleanedResponse = cleanedResponse.trim();
 
-				const codeBlockMatch = cleanedResponse.match(
-					/```(?:json)?\s*([\s\S]*?)\s*```/
-				);
-				if (codeBlockMatch) {
-					cleanedResponse = codeBlockMatch[1].trim();
-				} else {
-					const firstBracket = cleanedResponse.indexOf('[');
-					const lastBracket = cleanedResponse.lastIndexOf(']');
-					if (firstBracket !== -1 && lastBracket > firstBracket) {
-						cleanedResponse = cleanedResponse.substring(
-							firstBracket,
-							lastBracket + 1
-						);
+					const codeBlockMatch = cleanedResponse.match(
+						/```(?:json)?\s*([\s\S]*?)\s*```/
+					);
+					if (codeBlockMatch) {
+						cleanedResponse = codeBlockMatch[1].trim();
 					} else {
-						reportLog(
-							'Warning: Response does not appear to be a JSON array.',
-							'warn'
+						const firstBracket = cleanedResponse.indexOf('[');
+						const lastBracket = cleanedResponse.lastIndexOf(']');
+						if (firstBracket !== -1 && lastBracket > firstBracket) {
+							cleanedResponse = cleanedResponse.substring(
+								firstBracket,
+								lastBracket + 1
+							);
+						} else {
+							reportLog(
+								'Warning: Response does not appear to be a JSON array.',
+								'warn'
+							);
+						}
+					}
+
+					if (outputFormat === 'text' && getDebugFlag(session)) {
+						console.log(chalk.gray('Attempting to parse cleaned JSON...'));
+						console.log(chalk.gray('Cleaned response (first 100 chars):'));
+						console.log(chalk.gray(cleanedResponse.substring(0, 100)));
+						console.log(chalk.gray('Last 100 chars:'));
+						console.log(
+							chalk.gray(cleanedResponse.substring(cleanedResponse.length - 100))
 						);
 					}
-				}
 
-				if (outputFormat === 'text' && getDebugFlag(session)) {
-					console.log(chalk.gray('Attempting to parse cleaned JSON...'));
-					console.log(chalk.gray('Cleaned response (first 100 chars):'));
-					console.log(chalk.gray(cleanedResponse.substring(0, 100)));
-					console.log(chalk.gray('Last 100 chars:'));
-					console.log(
-						chalk.gray(cleanedResponse.substring(cleanedResponse.length - 100))
+					complexityAnalysis = JSON.parse(cleanedResponse);
+				} catch (parseError) {
+					if (loadingIndicator) stopLoadingIndicator(loadingIndicator);
+					reportLog(
+						`Error parsing complexity analysis JSON: ${parseError.message}`,
+						'error'
 					);
+					if (outputFormat === 'text') {
+						console.error(
+							chalk.red(
+								`Error parsing complexity analysis JSON: ${parseError.message}`
+							)
+						);
+					}
+					throw parseError;
 				}
-
-				complexityAnalysis = JSON.parse(cleanedResponse);
-			} catch (parseError) {
-				if (loadingIndicator) stopLoadingIndicator(loadingIndicator);
-				reportLog(
-					`Error parsing complexity analysis JSON: ${parseError.message}`,
-					'error'
-				);
-				if (outputFormat === 'text') {
-					console.error(
-						chalk.red(
-							`Error parsing complexity analysis JSON: ${parseError.message}`
-						)
-					);
-				}
-				throw parseError;
 			}
 
 			const taskIds = tasksData.tasks.map((t) => t.id);
@@ -627,3 +656,4 @@ async function analyzeTaskComplexity(options, context = {}) {
 }
 
 export default analyzeTaskComplexity;
+export { generateComplexityAnalysisPrompts };

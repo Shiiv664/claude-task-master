@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import { z } from 'zod';
 import { generatePrdPrompts } from './task-manager/parse-prd.js';
 import { generateExpandTaskPrompts, subtaskWrapperSchema } from './task-manager/expand-task.js';
+import { generateAddTaskPrompts, AiTaskDataSchema } from './task-manager/add-task.js';
 
 /**
  * Claude CLI Provider for Task Master
@@ -288,6 +289,56 @@ class ClaudeCliProvider {
 			throw new Error(`Generated subtasks failed validation: ${validationError.message}`);
 		}
 	}
+
+	/**
+	 * Add a new task using Claude CLI
+	 * @param {Object} params - Task addition parameters
+	 */
+	async addTask(params) {
+		const {
+			newTaskId,
+			prompt,
+			contextTasks,
+			manualTaskData = null,
+			useResearch = false,
+			timeout = 120000
+		} = params;
+
+		// Check CLI availability
+		await this.checkAvailability();
+
+		// Use shared prompt generation logic
+		const { systemPrompt, userPrompt } = generateAddTaskPrompts({
+			newTaskId,
+			prompt,
+			contextTasks,
+			manualTaskData
+		});
+
+		// For CLI, use system prompt as command argument and user prompt as stdin
+		const args = [
+			'--print',
+			'--output-format', 'json',
+			systemPrompt
+		];
+
+		const rawOutput = await this.executeCommand(args, userPrompt, { timeout });
+		const aiContent = this.parseCliResponse(rawOutput);
+		const jsonResponse = this.extractJsonFromContent(aiContent);
+
+		// Validate response with Zod schema
+		try {
+			const validatedResponse = AiTaskDataSchema.parse(jsonResponse);
+			
+			// Return in same structure as generateObjectService
+			return {
+				mainResult: validatedResponse,
+				success: true
+			};
+		} catch (validationError) {
+			throw new Error(`Generated task failed validation: ${validationError.message}`);
+		}
+	}
 }
 
 // Export singleton instance
@@ -307,6 +358,14 @@ export async function generateTasksWithCli(params) {
  */
 export async function expandTaskWithCli(params) {
 	return await claudeCliProvider.expandTask(params);
+}
+
+/**
+ * Add new task using Claude CLI
+ * Interface compatible with existing generateObjectService calls
+ */
+export async function addTaskWithCli(params) {
+	return await claudeCliProvider.addTask(params);
 }
 
 export default claudeCliProvider;

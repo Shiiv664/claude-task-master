@@ -15,7 +15,8 @@ import {
 } from '../utils.js';
 
 import { generateObjectService } from '../ai-services-unified.js';
-import { getDebugFlag } from '../config-manager.js';
+import { getDebugFlag, isClaudeCliModeEnabled } from '../config-manager.js';
+import { generateTasksWithCli } from '../claude-cli-provider.js';
 import generateTaskFiles from './generate-task-files.js';
 import { displayAiUsageSummary } from '../ui.js';
 
@@ -221,24 +222,41 @@ Guidelines:
     }
 }`;
 
-		// Call the unified AI service
-		report(
-			`Calling AI service to generate tasks from PRD${research ? ' with research-backed analysis' : ''}...`,
-			'info'
-		);
+		// Check if Claude CLI mode is enabled
+		if (isClaudeCliModeEnabled()) {
+			report(
+				`Calling Claude CLI to generate tasks from PRD${research ? ' with research-backed analysis' : ''}...`,
+				'info'
+			);
 
-		// Call generateObjectService with the CORRECT schema and additional telemetry params
-		aiServiceResponse = await generateObjectService({
-			role: research ? 'research' : 'main', // Use research role if flag is set
-			session: session,
-			projectRoot: projectRoot,
-			schema: prdResponseSchema,
-			objectName: 'tasks_data',
-			systemPrompt: systemPrompt,
-			prompt: userPrompt,
-			commandName: 'parse-prd',
-			outputType: isMCP ? 'mcp' : 'cli'
-		});
+			// Use Claude CLI provider
+			aiServiceResponse = await generateTasksWithCli({
+				prdContent: prdContent,
+				numTasks: numTasks,
+				nextId: nextId,
+				research: research,
+				prdPath: prdPath
+			});
+		} else {
+			// Call the unified AI service
+			report(
+				`Calling AI service to generate tasks from PRD${research ? ' with research-backed analysis' : ''}...`,
+				'info'
+			);
+
+			// Call generateObjectService with the CORRECT schema and additional telemetry params
+			aiServiceResponse = await generateObjectService({
+				role: research ? 'research' : 'main', // Use research role if flag is set
+				session: session,
+				projectRoot: projectRoot,
+				schema: prdResponseSchema,
+				objectName: 'tasks_data',
+				systemPrompt: systemPrompt,
+				prompt: userPrompt,
+				commandName: 'parse-prd',
+				outputType: isMCP ? 'mcp' : 'cli'
+			});
+		}
 
 		// Create the directory if it doesn't exist
 		const tasksDir = path.dirname(tasksPath);

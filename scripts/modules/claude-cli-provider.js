@@ -4,6 +4,7 @@ import { generatePrdPrompts } from './task-manager/parse-prd.js';
 import { generateExpandTaskPrompts, subtaskWrapperSchema } from './task-manager/expand-task.js';
 import { generateAddTaskPrompts, AiTaskDataSchema } from './task-manager/add-task.js';
 import { generateComplexityAnalysisPrompts } from './task-manager/analyze-task-complexity.js';
+import { generateUpdateSubtaskPrompts } from './task-manager/update-subtask-by-id.js';
 
 /**
  * Claude CLI Provider for Task Master
@@ -395,6 +396,51 @@ class ClaudeCliProvider {
 			throw new Error(`Generated complexity analysis failed validation: ${validationError.message}`);
 		}
 	}
+
+	/**
+	 * Update a subtask using Claude CLI
+	 * @param {Object} params - Update parameters
+	 */
+	async updateSubtask(params) {
+		const {
+			parentContext,
+			prevSubtask,
+			nextSubtask,
+			subtask,
+			prompt,
+			useResearch = false,
+			timeout = 120000
+		} = params;
+
+		// Check CLI availability
+		await this.checkAvailability();
+
+		// Use shared prompt generation logic
+		const { systemPrompt, userPrompt } = generateUpdateSubtaskPrompts({
+			parentContext,
+			prevSubtask,
+			nextSubtask,
+			subtask,
+			prompt
+		});
+
+		// For CLI, use system prompt as command argument and user prompt as stdin
+		const args = [
+			'--print',
+			'--output-format', 'json',
+			systemPrompt
+		];
+
+		const rawOutput = await this.executeCommand(args, userPrompt, { timeout });
+		const aiContent = this.parseCliResponse(rawOutput);
+		
+		// For subtask updates, the response is a plain string, not JSON
+		// So we return the AI content directly
+		return {
+			mainResult: aiContent,
+			success: true
+		};
+	}
 }
 
 // Export singleton instance
@@ -430,6 +476,14 @@ export async function addTaskWithCli(params) {
  */
 export async function analyzeComplexityWithCli(params) {
 	return await claudeCliProvider.analyzeComplexity(params);
+}
+
+/**
+ * Update subtask using Claude CLI
+ * Interface compatible with existing generateTextService calls
+ */
+export async function updateSubtaskWithCli(params) {
+	return await claudeCliProvider.updateSubtask(params);
 }
 
 export default claudeCliProvider;

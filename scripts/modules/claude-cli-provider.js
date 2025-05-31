@@ -6,6 +6,7 @@ import { generateAddTaskPrompts, AiTaskDataSchema } from './task-manager/add-tas
 import { generateComplexityAnalysisPrompts } from './task-manager/analyze-task-complexity.js';
 import { generateUpdateSubtaskPrompts } from './task-manager/update-subtask-by-id.js';
 import { generateUpdateTaskPrompts } from './task-manager/update-task-by-id.js';
+import { generateUpdateTasksPrompts } from './task-manager/update-tasks.js';
 
 /**
  * Claude CLI Provider for Task Master
@@ -500,6 +501,52 @@ class ClaudeCliProvider {
 			throw new Error(`Generated task update failed validation: ${validationError.message}`);
 		}
 	}
+
+	/**
+	 * Update multiple tasks using Claude CLI
+	 * @param {Object} params - Update parameters
+	 */
+	async updateTasks(params) {
+		const {
+			tasksToUpdate,
+			prompt,
+			useResearch = false,
+			timeout = 120000
+		} = params;
+
+		// Check CLI availability
+		await this.checkAvailability();
+
+		// Use shared prompt generation logic
+		const { systemPrompt, userPrompt } = generateUpdateTasksPrompts({
+			tasksToUpdate,
+			prompt
+		});
+
+		// For CLI, use system prompt as command argument and user prompt as stdin
+		const args = [
+			'--print',
+			'--output-format', 'json',
+			systemPrompt
+		];
+
+		const rawOutput = await this.executeCommand(args, userPrompt, { timeout });
+		const aiContent = this.parseCliResponse(rawOutput);
+		const jsonResponse = this.extractJsonFromContent(aiContent);
+
+		// Validate response with Zod schema - should be an array of tasks
+		try {
+			const validatedResponse = z.array(updatedTaskSchema).parse(jsonResponse);
+			
+			// Return in same structure as generateTextService
+			return {
+				mainResult: validatedResponse,
+				success: true
+			};
+		} catch (validationError) {
+			throw new Error(`Generated tasks update failed validation: ${validationError.message}`);
+		}
+	}
 }
 
 // Export singleton instance
@@ -551,6 +598,14 @@ export async function updateSubtaskWithCli(params) {
  */
 export async function updateTaskWithCli(params) {
 	return await claudeCliProvider.updateTask(params);
+}
+
+/**
+ * Update multiple tasks using Claude CLI
+ * Interface compatible with existing generateTextService calls
+ */
+export async function updateTasksWithCli(params) {
+	return await claudeCliProvider.updateTasks(params);
 }
 
 export default claudeCliProvider;

@@ -102,24 +102,24 @@ Replace API-based AI providers with Claude CLI for zero-API-key operation while 
 - [x] **Config.2** Add optional CLAUDE_CLI_PATH for custom claude executable
 - [x] **Config.3** Update parse-prd.js to route to CLI provider when enabled
 
+#### Phase 2: Feature Parity
+- [x] **2.1.1** Add task expansion support to CLI provider
+- [x] **2.1.2** Add task addition support to CLI provider  
+- [x] **2.1.3** Add complexity analysis support to CLI provider
+- [x] **2.1.4** Extract shared prompt logic for expand-task.js
+- [x] **2.1.5** Extract shared prompt logic for add-task.js
+- [x] **2.1.6** Extract shared prompt logic for analyze-task-complexity.js
+
 ### 🔄 Next Tasks (Remaining Work)
 
-#### Phase 2: Feature Parity
-- [ ] **2.1.1** Add task expansion support to CLI provider
-- [ ] **2.1.2** Add task addition support to CLI provider  
-- [ ] **2.1.3** Add complexity analysis support to CLI provider
-- [ ] **2.1.4** Extract shared prompt logic for expand-task.js
-- [ ] **2.1.5** Extract shared prompt logic for add-task.js
-- [ ] **2.1.6** Extract shared prompt logic for analyze-task-complexity.js
-
-#### Phase 3: CLI Integration
-- [ ] **3.1.1** Update task expansion entry points for CLI mode
-- [ ] **3.1.2** Update task addition entry points for CLI mode
-- [ ] **3.1.3** Update complexity analysis entry points for CLI mode
+#### Phase 3: CLI Integration & Testing
+- [ ] **3.1.1** Update remaining entry points for CLI mode (if any)
 - [ ] **3.2.1** Manual testing of all operations with actual Claude CLI
 - [ ] **3.2.2** Verify research mode works across all operations
 - [ ] **3.2.3** Test large PRD files with CLI provider
 - [ ] **3.2.4** Error handling validation for CLI failures
+- [ ] **3.3.1** Update documentation with CLI setup instructions
+- [ ] **3.3.2** Create usage examples for CLI mode
 
 #### Future Enhancements (Post-MVP)
 - [ ] **Future.1** MCP server integration for CLI mode
@@ -129,6 +129,6 @@ Replace API-based AI providers with Claude CLI for zero-API-key operation while 
 
 ### 📊 Progress Summary
 - **Phase 1**: ✅ 100% Complete (14/14 tasks)
-- **Phase 2**: ⏳ 0% Complete (0/6 tasks)  
-- **Phase 3**: ⏳ 0% Complete (0/4 tasks)
-- **Overall**: 🎯 58% Complete (14/24 core tasks)
+- **Phase 2**: ✅ 100% Complete (6/6 tasks)  
+- **Phase 3**: ⏳ 0% Complete (0/7 tasks)
+- **Overall**: 🎯 83% Complete (20/24 core tasks)

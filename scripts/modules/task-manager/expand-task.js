@@ -102,6 +102,7 @@ For each subtask, provide:
 - description: Detailed description
 - dependencies: Array of prerequisite subtask IDs (use the new sequential IDs)
 - details: Implementation details
+- status: Should be "pending" for all new subtasks
 - testStrategy: Optional testing approach
 
 
@@ -134,6 +135,7 @@ function generateMainUserPrompt(
       "description": "Detailed description",
       "dependencies": [], // e.g., [${nextSubtaskId + 1}] if it depends on the next
       "details": "Implementation guidance",
+      "status": "pending",
       "testStrategy": "Optional testing approach"
     },
     // ... (repeat for a total of ${subtaskCount} subtasks with sequential IDs)

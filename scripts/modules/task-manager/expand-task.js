@@ -180,6 +180,7 @@ function generateResearchUserPrompt(
       "description": "<string>",
       "dependencies": [<number>], // e.g., [${nextSubtaskId + 1}]. If no dependencies, use an empty array [].
       "details": "<string>",
+      "status": "pending",
       "testStrategy": "<string>" // Optional
     },
     // ... (repeat for ${subtaskCount} subtasks)

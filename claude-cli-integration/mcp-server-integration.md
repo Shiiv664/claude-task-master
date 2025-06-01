@@ -1,10 +1,26 @@
-# MCP Server Integration for Claude CLI Mode
+# MCP Server Enhancement for Claude CLI Mode
 
-> **Future Enhancement: Bridging Task Master's MCP server with Claude CLI for enhanced AI-powered development workflows**
+> **Future Enhancement: Adding Claude CLI support to Task Master's existing MCP server for unified AI-powered development workflows**
 
 ## 🎯 Overview
 
-The **Model Context Protocol (MCP) server integration** represents the next evolution of Task Master's Claude CLI integration. This enhancement would combine the zero-API-key benefits of CLI mode with the powerful tool ecosystem available through MCP servers, creating a unified development environment.
+Task Master already has a complete **MCP server** with all operations exposed as tools. The **CLI mode enhancement** would simply add Claude CLI support to these existing tools, allowing MCP clients (like Claude Desktop and Cursor) to benefit from zero-API-key operation while maintaining full functionality.
+
+## 📋 Current State vs Enhancement
+
+### **✅ What Already Exists**
+- Complete MCP server with all Task Master operations as tools
+- Full functionality: parse PRD, expand tasks, add tasks, analyze complexity, etc.
+- Ready for Claude Desktop, Cursor, and other MCP clients
+- Works with API keys (current mode)
+
+### **🔄 What Would Be Enhanced**
+- Add CLI mode detection to existing MCP tools
+- Route to Claude CLI provider when `CLAUDE_CLI_MODE=true`
+- Enable zero-API-key operation for MCP clients
+- Maintain full backward compatibility
+
+**Result:** MCP clients get the same zero-cost benefits as CLI mode!
 
 ## 🔮 Vision
 
@@ -53,63 +69,59 @@ node scripts/dev.js parse-prd project.md -n 10 -f --research
 
 ## 🛠️ Proposed Implementation
 
-### **Phase 1: MCP Server Foundation**
-Create a dedicated MCP server that exposes Task Master functionality:
+### **Phase 1: Enhance Existing MCP Server**
+Task Master already has a complete MCP server with all operations exposed as tools. We simply need to enhance the existing tools to support CLI mode:
 
 ```javascript
-// mcp-server/task-master-mcp.js
-import { McpServer } from '@modelcontextprotocol/sdk';
+// mcp-server/src/tools/parse-prd.js (enhanced)
+import { isClaudeCliModeEnabled } from '../../scripts/modules/config-manager.js';
+import { generateTasksWithCli } from '../../scripts/modules/claude-cli-provider.js';
+import { parsePRDDirect } from '../core/task-master-core.js';
 
-class TaskMasterMcpServer extends McpServer {
-  constructor() {
-    super({
-      name: 'task-master',
-      version: '1.0.0',
-      capabilities: {
-        tools: {
-          // Task Master operations as MCP tools
-          'parse_prd': { ... },
-          'expand_task': { ... },
-          'add_task': { ... },
-          'analyze_complexity': { ... },
-          // ... all 7 operations
-        },
-        resources: {
-          // Access to tasks, PRDs, complexity reports
-          'tasks': { ... },
-          'projects': { ... },
-          'complexity_reports': { ... }
-        }
+export function registerParsePRDTool(server) {
+  server.addTool({
+    name: 'parse_prd',
+    description: "Parse PRD and generate tasks - supports both API and CLI modes",
+    parameters: { /* existing parameters */ },
+    
+    async handler(params) {
+      // Detect mode and route accordingly
+      if (isClaudeCliModeEnabled()) {
+        // Use CLI provider
+        return await generateTasksWithCli(params);
+      } else {
+        // Use existing direct function
+        return await parsePRDDirect(params);
       }
-    });
-  }
+    }
+  });
 }
 ```
 
-### **Phase 2: Claude CLI Bridge**
-Integrate MCP server with existing CLI mode:
+### **Phase 2: Update All MCP Tools**
+Apply the same CLI mode routing to all existing MCP tools:
 
 ```javascript
-// Enhanced CLI provider with MCP awareness
-class ClaudeCliMcpProvider extends ClaudeCliProvider {
-  async executeWithMcpContext(operation, params) {
-    // 1. Execute CLI operation
-    const result = await super.execute(operation, params);
+// Pattern applied to all tools in mcp-server/src/tools/
+// - expand-task.js
+// - add-task.js  
+// - analyze.js
+// - update-task.js
+// - etc.
+
+export function registerToolWithCliSupport(server, toolName, cliFunction, directFunction) {
+  server.addTool({
+    name: toolName,
+    // ... existing configuration
     
-    // 2. Notify MCP server of changes
-    await this.mcpServer.notifyUpdate({
-      operation,
-      result,
-      timestamp: Date.now()
-    });
-    
-    // 3. Return enhanced result with MCP metadata
-    return {
-      ...result,
-      mcpIntegration: true,
-      availableInClaudeDesktop: true
-    };
-  }
+    async handler(params) {
+      if (isClaudeCliModeEnabled()) {
+        return await cliFunction(params);
+      } else {
+        return await directFunction(params);
+      }
+    }
+  });
 }
 ```
 
@@ -172,28 +184,29 @@ node scripts/dev.js analyze-complexity
 
 ## 🔧 Implementation Details
 
-### **MCP Server Architecture**
+### **Enhanced MCP Server Architecture**
+Building on the existing MCP server structure:
+
 ```
-task-master-mcp-server/
+mcp-server/                    # ✅ Already exists
 ├── src/
-│   ├── server.ts              # Main MCP server
-│   ├── tools/                 # Task Master operations as MCP tools
-│   │   ├── parse-prd.ts
-│   │   ├── expand-task.ts
-│   │   ├── add-task.ts
-│   │   └── ...
-│   ├── resources/             # Task Master data as MCP resources
-│   │   ├── tasks.ts
-│   │   ├── projects.ts
-│   │   └── complexity-reports.ts
-│   └── integrations/          # IDE-specific integrations
-│       ├── claude-desktop.ts
-│       ├── cursor.ts
-│       └── vscode.ts
-├── config/
-│   └── mcp-config.json        # MCP server configuration
-└── package.json
+│   ├── tools/                 # ✅ All tools already implemented
+│   │   ├── parse-prd.js       # 🔄 Enhance with CLI mode support
+│   │   ├── expand-task.js     # 🔄 Enhance with CLI mode support
+│   │   ├── add-task.js        # 🔄 Enhance with CLI mode support
+│   │   ├── analyze.js         # 🔄 Enhance with CLI mode support
+│   │   └── ...                # 🔄 All existing tools
+│   ├── core/                  # ✅ Already exists
+│   │   └── task-master-core.js
+│   └── index.js               # ✅ Main server already running
+└── server.js                  # ✅ Entry point already configured
 ```
+
+**Enhancement Strategy:**
+- ✅ Keep all existing functionality
+- 🔄 Add CLI mode detection to each tool
+- 🔄 Route to CLI provider when `CLAUDE_CLI_MODE=true`
+- ✅ Maintain backward compatibility
 
 ### **Configuration Management**
 ```json

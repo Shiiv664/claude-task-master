@@ -102,24 +102,27 @@ Replace API-based AI providers with Claude CLI for zero-API-key operation while 
 - [x] **Config.2** Add optional CLAUDE_CLI_PATH for custom claude executable
 - [x] **Config.3** Update parse-prd.js to route to CLI provider when enabled
 
-#### Phase 2: Feature Parity
+#### Phase 2: Feature Parity (Extended)
 - [x] **2.1.1** Add task expansion support to CLI provider
 - [x] **2.1.2** Add task addition support to CLI provider  
 - [x] **2.1.3** Add complexity analysis support to CLI provider
 - [x] **2.1.4** Extract shared prompt logic for expand-task.js
 - [x] **2.1.5** Extract shared prompt logic for add-task.js
 - [x] **2.1.6** Extract shared prompt logic for analyze-task-complexity.js
+- [x] **2.1.7** Add update-subtask-by-id CLI support to CLI provider
+- [x] **2.1.8** Add update-task-by-id CLI support to CLI provider
+- [x] **2.1.9** Add update-tasks (bulk) CLI support to CLI provider
 
-### 🔄 Next Tasks (Remaining Work)
+### ✅ **PROJECT COMPLETE!**
 
-#### Phase 3: CLI Integration & Testing
-- [ ] **3.1.1** Update remaining entry points for CLI mode (if any)
-- [ ] **3.2.1** Manual testing of all operations with actual Claude CLI
-- [ ] **3.2.2** Verify research mode works across all operations
-- [ ] **3.2.3** Test large PRD files with CLI provider
-- [ ] **3.2.4** Error handling validation for CLI failures
-- [ ] **3.3.1** Update documentation with CLI setup instructions
-- [ ] **3.3.2** Create usage examples for CLI mode
+#### Phase 3: CLI Integration & Testing - COMPLETED
+- [x] **3.1.1** Update remaining entry points for CLI mode (all complete)
+- [x] **3.2.1** Manual testing of all 7 operations with actual Claude CLI
+- [x] **3.2.2** Verify research mode works across all operations
+- [x] **3.2.3** Test large PRD files with CLI provider (7.6KB handled successfully)
+- [x] **3.2.4** Error handling validation and schema fixes (subtask status field)
+- [x] **3.3.1** Update documentation with CLI setup instructions
+- [x] **3.3.2** Create usage examples for CLI mode
 
 #### Future Enhancements (Post-MVP)
 - [ ] **Future.1** MCP server integration for CLI mode
@@ -129,6 +132,16 @@ Replace API-based AI providers with Claude CLI for zero-API-key operation while 
 
 ### 📊 Progress Summary
 - **Phase 1**: ✅ 100% Complete (14/14 tasks)
-- **Phase 2**: ✅ 100% Complete (6/6 tasks)  
-- **Phase 3**: ⏳ 0% Complete (0/7 tasks)
-- **Overall**: 🎯 83% Complete (20/24 core tasks)
+- **Phase 2**: ✅ 100% Complete (9/9 tasks) *[Extended scope!]*
+- **Phase 3**: ✅ 100% Complete (7/7 tasks) *[All testing and docs complete!]*
+- **Overall**: 🎯 **100% Complete (27/27 core tasks)**
+
+### 🎉 **Major Achievement: Complete Feature Parity**
+**ALL 7 AI operations** now support Claude CLI mode:
+1. PRD-to-tasks generation
+2. Task expansion  
+3. Task addition
+4. Complexity analysis
+5. Update subtask
+6. Update task  
+7. Update tasks (bulk)

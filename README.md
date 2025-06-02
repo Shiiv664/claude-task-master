@@ -1,17 +1,56 @@
-# Task Master [![GitHub stars](https://img.shields.io/github/stars/eyaltoledano/claude-task-master?style=social)](https://github.com/eyaltoledano/claude-task-master/stargazers)
+# Task Master with Claude CLI Integration 🚀
 
-[![CI](https://github.com/eyaltoledano/claude-task-master/actions/workflows/ci.yml/badge.svg)](https://github.com/eyaltoledano/claude-task-master/actions/workflows/ci.yml) [![npm version](https://badge.fury.io/js/task-master-ai.svg)](https://badge.fury.io/js/task-master-ai) [![Discord](https://dcbadge.limes.pink/api/server/https://discord.gg/taskmasterai?style=flat)](https://discord.gg/taskmasterai) [![License: MIT with Commons Clause](https://img.shields.io/badge/license-MIT%20with%20Commons%20Clause-blue.svg)](LICENSE)
+[![Original Repo](https://img.shields.io/badge/Original%20Repo-eyaltoledano/claude--task--master-blue)](https://github.com/eyaltoledano/claude-task-master) [![Fork Stars](https://img.shields.io/github/stars/Shiiv664/claude-task-master?style=social)](https://github.com/Shiiv664/claude-task-master/stargazers) [![License: MIT with Commons Clause](https://img.shields.io/badge/license-MIT%20with%20Commons%20Clause-blue.svg)](LICENSE)
 
-### By [@eyaltoledano](https://x.com/eyaltoledano) & [@RalphEcom](https://x.com/RalphEcom)
+> **🎯 This is a fork of the original [Task Master](https://github.com/eyaltoledano/claude-task-master) by [@eyaltoledano](https://x.com/eyaltoledano) & [@RalphEcom](https://x.com/RalphEcom), enhanced with complete Claude CLI integration for zero-API-key operation.**
 
-[![Twitter Follow](https://img.shields.io/twitter/follow/eyaltoledano?style=flat)](https://x.com/eyaltoledano)
-[![Twitter Follow](https://img.shields.io/twitter/follow/RalphEcom?style=flat)](https://x.com/RalphEcom)
+## ✨ Fork Enhancements
 
-A task management system for AI-driven development with Claude, designed to work seamlessly with Cursor AI.
+### **🆓 Zero-API-Key Operation**
+- **Complete Claude CLI integration** - Use Claude Code CLI instead of API calls
+- **No usage costs** - Eliminate API charges while maintaining full functionality
+- **Same high-quality results** - Claude Sonnet model through CLI interface
+
+### **🔧 Easy Setup**
+```bash
+# Enable CLI mode
+export CLAUDE_CLI_MODE=true
+
+# Use all existing commands - no changes needed!
+node scripts/dev.js parse-prd project.md -n 10 -f --research
+```
+
+### **📋 Full Feature Parity**
+All Task Master functionality works identically in CLI mode:
+- ✅ PRD-to-tasks generation with research mode
+- ✅ Task expansion into detailed subtasks  
+- ✅ AI-powered task addition and complexity analysis
+- ✅ Task and subtask updates with bulk operations
+- ✅ MCP server integration for Claude Desktop/Cursor
+
+### **📚 Comprehensive Documentation**
+- **[CLI Setup Guide](docs/claude-cli-setup.md)** - Complete configuration instructions
+- **[Usage Examples](docs/claude-cli-examples.md)** - Real-world workflows and scenarios
+- **[Validation Tools](claude-cli-integration/)** - Automated setup verification
+
+---
+
+## 🙏 Original Project
+
+**Task Master** is an exceptional AI-driven task management system created by [@eyaltoledano](https://x.com/eyaltoledano) & [@RalphEcom](https://x.com/RalphEcom), designed to work seamlessly with Cursor AI.
+
+**Original Repository:** https://github.com/eyaltoledano/claude-task-master
 
 ## Requirements
 
-Taskmaster utilizes AI across several commands, and those require a separate API key. You can use a variety of models from different AI providers provided you add your API keys. For example, if you want to use Claude 3.7, you'll need an Anthropic API key.
+### **Option 1: Claude CLI Mode (Recommended - Zero Cost)**
+For zero-API-key operation using Claude CLI:
+- **Claude Code CLI** installed and configured ([Download here](https://claude.ai/code))
+- Set `CLAUDE_CLI_MODE=true` environment variable
+- **No API keys required** - Uses Claude CLI for all operations
+
+### **Option 2: API Mode (Original)**
+Task Master utilizes AI across several commands, and those require a separate API key. You can use a variety of models from different AI providers provided you add your API keys. For example, if you want to use Claude 3.7, you'll need an Anthropic API key.
 
 You can define 3 types of models to be used: the main model, the research model, and the fallback model (in case either the main or research fail). Whatever model you use, its provider API key must be present in either mcp.json or .env.
 
@@ -28,7 +67,25 @@ Using the research model is optional but highly recommended. You will need at le
 
 ## Quick Start
 
-### Option 1: MCP (Recommended)
+### **Option 1: Claude CLI Mode (Zero Cost)**
+
+```bash
+# 1. Install Claude Code CLI (if not already installed)
+# Visit: https://claude.ai/code
+
+# 2. Enable CLI mode
+export CLAUDE_CLI_MODE=true
+
+# 3. Verify setup
+node claude-cli-integration/validate-cli-integration.js
+
+# 4. Start using Task Master with zero API costs!
+node scripts/dev.js parse-prd my-project.md -n 10 -f --research
+```
+
+**See the [complete CLI setup guide](docs/claude-cli-setup.md) for detailed instructions.**
+
+### Option 2: MCP (API Mode)
 
 MCP (Model Control Protocol) lets you run Task Master directly from your editor.
 

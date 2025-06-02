@@ -744,6 +744,15 @@ function getBaseUrlForRole(role, explicitRoot = null) {
 		: undefined;
 }
 
+// Claude CLI Mode Detection
+function isClaudeCliModeEnabled() {
+	return process.env.CLAUDE_CLI_MODE === 'true';
+}
+
+function getClaudeCliPath() {
+	return process.env.CLAUDE_CLI_PATH || 'claude';
+}
+
 export {
 	// Core config access
 	getConfig,
@@ -784,6 +793,11 @@ export {
 	// API Key Checkers (still relevant)
 	isApiKeySet,
 	getMcpApiKeyStatus,
+
+	// Claude CLI Mode
+	isClaudeCliModeEnabled,
+	getClaudeCliPath,
+
 	// ADD: Function to get all provider names
 	getAllProviders,
 	getVertexProjectId,

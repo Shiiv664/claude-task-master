@@ -18,8 +18,47 @@ import {
 	isSilentMode
 } from '../utils.js';
 import { generateTextService } from '../ai-services-unified.js';
-import { getDebugFlag } from '../config-manager.js';
+import { getDebugFlag, isClaudeCliModeEnabled } from '../config-manager.js';
+import { updateSubtaskWithCli } from '../claude-cli-provider.js';
 import generateTaskFiles from './generate-task-files.js';
+
+/**
+ * Generate system and user prompts for subtask update
+ * @param {Object} params - Prompt generation parameters
+ * @returns {Object} - { systemPrompt, userPrompt }
+ */
+function generateUpdateSubtaskPrompts(params) {
+	const {
+		parentContext,
+		prevSubtask,
+		nextSubtask,
+		subtask,
+		prompt
+	} = params;
+
+	const contextString = `
+Parent Task: ${JSON.stringify(parentContext)}
+${prevSubtask ? `Previous Subtask: ${JSON.stringify(prevSubtask)}` : ''}
+${nextSubtask ? `Next Subtask: ${JSON.stringify(nextSubtask)}` : ''}
+Current Subtask Details (for context only):\n${subtask.details || '(No existing details)'}
+`;
+
+	const systemPrompt = `You are an AI assistant helping to update a subtask. You will be provided with the subtask's existing details, context about its parent and sibling tasks, and a user request string.
+
+Your Goal: Based *only* on the user's request and all the provided context (including existing details if relevant to the request), GENERATE the new text content that should be added to the subtask's details.
+Focus *only* on generating the substance of the update.
+
+Output Requirements:
+1. Return *only* the newly generated text content as a plain string. Do NOT return a JSON object or any other structured data.
+2. Your string response should NOT include any of the subtask's original details, unless the user's request explicitly asks to rephrase, summarize, or directly modify existing text.
+3. Do NOT include any timestamps, XML-like tags, markdown, or any other special formatting in your string response.
+4. Ensure the generated text is concise yet complete for the update based on the user request. Avoid conversational fillers or explanations about what you are doing (e.g., do not start with "Okay, here's the update...").`;
+
+	// Pass the existing subtask.details in the user prompt for the AI's context.
+	const userPrompt = `Task Context:\n${contextString}\n\nUser Request: "${prompt}"\n\nBased on the User Request and all the Task Context (including current subtask details provided above), what is the new information or text that should be appended to this subtask's details? Return ONLY this new text as a plain string.`;
+
+	return { systemPrompt, userPrompt };
+}
 
 /**
  * Update a subtask by appending additional timestamped information using the unified AI service.
@@ -181,53 +220,59 @@ async function updateSubtaskById(
 						}
 					: null;
 
-			const contextString = `
-Parent Task: ${JSON.stringify(parentContext)}
-${prevSubtask ? `Previous Subtask: ${JSON.stringify(prevSubtask)}` : ''}
-${nextSubtask ? `Next Subtask: ${JSON.stringify(nextSubtask)}` : ''}
-Current Subtask Details (for context only):\n${subtask.details || '(No existing details)'}
-`;
-
-			const systemPrompt = `You are an AI assistant helping to update a subtask. You will be provided with the subtask's existing details, context about its parent and sibling tasks, and a user request string.
-
-Your Goal: Based *only* on the user's request and all the provided context (including existing details if relevant to the request), GENERATE the new text content that should be added to the subtask's details.
-Focus *only* on generating the substance of the update.
-
-Output Requirements:
-1. Return *only* the newly generated text content as a plain string. Do NOT return a JSON object or any other structured data.
-2. Your string response should NOT include any of the subtask's original details, unless the user's request explicitly asks to rephrase, summarize, or directly modify existing text.
-3. Do NOT include any timestamps, XML-like tags, markdown, or any other special formatting in your string response.
-4. Ensure the generated text is concise yet complete for the update based on the user request. Avoid conversational fillers or explanations about what you are doing (e.g., do not start with "Okay, here's the update...").`;
-
-			// Pass the existing subtask.details in the user prompt for the AI's context.
-			const userPrompt = `Task Context:\n${contextString}\n\nUser Request: "${prompt}"\n\nBased on the User Request and all the Task Context (including current subtask details provided above), what is the new information or text that should be appended to this subtask's details? Return ONLY this new text as a plain string.`;
-
-			const role = useResearch ? 'research' : 'main';
-			report('info', `Using AI text service with role: ${role}`);
-
-			aiServiceResponse = await generateTextService({
-				prompt: userPrompt,
-				systemPrompt: systemPrompt,
-				role,
-				session,
-				projectRoot,
-				maxRetries: 2,
-				commandName: 'update-subtask',
-				outputType: isMCP ? 'mcp' : 'cli'
+			// Generate prompts using shared function
+			const { systemPrompt, userPrompt } = generateUpdateSubtaskPrompts({
+				parentContext,
+				prevSubtask,
+				nextSubtask,
+				subtask,
+				prompt
 			});
 
-			if (
-				aiServiceResponse &&
-				aiServiceResponse.mainResult &&
-				typeof aiServiceResponse.mainResult === 'string'
-			) {
+			if (isClaudeCliModeEnabled()) {
+				// Use Claude CLI provider
+				report('info', 'Using Claude CLI provider for subtask update');
+				aiServiceResponse = await updateSubtaskWithCli({
+					parentContext,
+					prevSubtask,
+					nextSubtask,
+					subtask,
+					prompt,
+					useResearch
+				});
 				generatedContentString = aiServiceResponse.mainResult;
 			} else {
-				generatedContentString = '';
-				report(
-					'warn',
-					'AI service response did not contain expected text string.'
-				);
+				// Use original API-based service
+				const role = useResearch ? 'research' : 'main';
+				report('info', `Using AI text service with role: ${role}`);
+
+				aiServiceResponse = await generateTextService({
+					prompt: userPrompt,
+					systemPrompt: systemPrompt,
+					role,
+					session,
+					projectRoot,
+					maxRetries: 2,
+					commandName: 'update-subtask',
+					outputType: isMCP ? 'mcp' : 'cli'
+				});
+			}
+
+			// Only handle response for API-based service (CLI already handled above)
+			if (!isClaudeCliModeEnabled()) {
+				if (
+					aiServiceResponse &&
+					aiServiceResponse.mainResult &&
+					typeof aiServiceResponse.mainResult === 'string'
+				) {
+					generatedContentString = aiServiceResponse.mainResult;
+				} else {
+					generatedContentString = '';
+					report(
+						'warn',
+						'AI service response did not contain expected text string.'
+					);
+				}
 			}
 
 			if (outputFormat === 'text' && loadingIndicator) {
@@ -384,3 +429,4 @@ Output Requirements:
 }
 
 export default updateSubtaskById;
+export { generateUpdateSubtaskPrompts };

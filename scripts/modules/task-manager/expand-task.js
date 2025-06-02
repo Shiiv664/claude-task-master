@@ -12,7 +12,8 @@ import {
 
 import { generateTextService } from '../ai-services-unified.js';
 
-import { getDefaultSubtasks, getDebugFlag } from '../config-manager.js';
+import { getDefaultSubtasks, getDebugFlag, isClaudeCliModeEnabled } from '../config-manager.js';
+import { expandTaskWithCli } from '../claude-cli-provider.js';
 import generateTaskFiles from './generate-task-files.js';
 import { COMPLEXITY_REPORT_FILE } from '../../../src/constants/paths.js';
 
@@ -51,6 +52,35 @@ const subtaskWrapperSchema = z.object({
 // --- End Zod Schemas ---
 
 /**
+ * Generate system and user prompts for task expansion
+ * @param {Object} params - Prompt generation parameters
+ * @returns {Object} - { systemPrompt, userPrompt }
+ */
+function generateExpandTaskPrompts(params) {
+	const { task, subtaskCount, additionalContext, nextSubtaskId, useResearch } = params;
+	
+	let systemPrompt, userPrompt;
+	
+	if (useResearch) {
+		systemPrompt = generateResearchSystemPrompt();
+		userPrompt = generateResearchUserPrompt(task, subtaskCount, additionalContext, nextSubtaskId);
+	} else {
+		systemPrompt = generateMainSystemPrompt(subtaskCount);
+		userPrompt = generateMainUserPrompt(task, subtaskCount, additionalContext, nextSubtaskId);
+	}
+	
+	return { systemPrompt, userPrompt };
+}
+
+/**
+ * Generates the system prompt for the research AI role.
+ * @returns {string} The system prompt.
+ */
+function generateResearchSystemPrompt() {
+	return `You are an AI assistant that responds ONLY with valid JSON objects as requested. The object should contain a 'subtasks' array.`;
+}
+
+/**
  * Generates the system prompt for the main AI role (e.g., Claude).
  * @param {number} subtaskCount - The target number of subtasks.
  * @returns {string} The system prompt.
@@ -73,6 +103,7 @@ For each subtask, provide:
 - description: Detailed description
 - dependencies: Array of prerequisite subtask IDs (use the new sequential IDs)
 - details: Implementation details
+- status: Should be "pending" for all new subtasks
 - testStrategy: Optional testing approach
 
 
@@ -105,6 +136,7 @@ function generateMainUserPrompt(
       "description": "Detailed description",
       "dependencies": [], // e.g., [${nextSubtaskId + 1}] if it depends on the next
       "details": "Implementation guidance",
+      "status": "pending",
       "testStrategy": "Optional testing approach"
     },
     // ... (repeat for a total of ${subtaskCount} subtasks with sequential IDs)
@@ -149,6 +181,7 @@ function generateResearchUserPrompt(
       "description": "<string>",
       "dependencies": [<number>], // e.g., [${nextSubtaskId + 1}]. If no dependencies, use an empty array [].
       "details": "<string>",
+      "status": "pending",
       "testStrategy": "<string>" // Optional
     },
     // ... (repeat for ${subtaskCount} subtasks)
@@ -562,7 +595,7 @@ async function expandTask(
 		}
 		// --- End Complexity Report / Prompt Logic ---
 
-		// --- AI Subtask Generation using generateTextService ---
+		// --- AI Subtask Generation using generateTextService or CLI ---
 		let generatedSubtasks = [];
 		let loadingIndicator = null;
 		if (outputFormat === 'text') {
@@ -575,31 +608,47 @@ async function expandTask(
 		let aiServiceResponse = null;
 
 		try {
-			const role = useResearch ? 'research' : 'main';
+			if (isClaudeCliModeEnabled()) {
+				// Use Claude CLI provider
+				aiServiceResponse = await expandTaskWithCli({
+					task,
+					subtaskCount: finalSubtaskCount,
+					additionalContext: `${additionalContext}${complexityReasoningContext}`.trim(),
+					nextSubtaskId,
+					useResearch
+				});
+				generatedSubtasks = aiServiceResponse.mainResult;
+				logger.info(
+					`Successfully generated ${generatedSubtasks.length} subtasks using Claude CLI.`
+				);
+			} else {
+				// Use original API-based service
+				const role = useResearch ? 'research' : 'main';
 
-			// Call generateTextService with the determined prompts and telemetry params
-			aiServiceResponse = await generateTextService({
-				prompt: promptContent,
-				systemPrompt: systemPrompt,
-				role,
-				session,
-				projectRoot,
-				commandName: 'expand-task',
-				outputType: outputFormat
-			});
-			responseText = aiServiceResponse.mainResult;
+				// Call generateTextService with the determined prompts and telemetry params
+				aiServiceResponse = await generateTextService({
+					prompt: promptContent,
+					systemPrompt: systemPrompt,
+					role,
+					session,
+					projectRoot,
+					commandName: 'expand-task',
+					outputType: outputFormat
+				});
+				responseText = aiServiceResponse.mainResult;
 
-			// Parse Subtasks
-			generatedSubtasks = parseSubtasksFromText(
-				responseText,
-				nextSubtaskId,
-				finalSubtaskCount,
-				task.id,
-				logger
-			);
-			logger.info(
-				`Successfully parsed ${generatedSubtasks.length} subtasks from AI response.`
-			);
+				// Parse Subtasks
+				generatedSubtasks = parseSubtasksFromText(
+					responseText,
+					nextSubtaskId,
+					finalSubtaskCount,
+					task.id,
+					logger
+				);
+				logger.info(
+					`Successfully parsed ${generatedSubtasks.length} subtasks from AI response.`
+				);
+			}
 		} catch (error) {
 			if (loadingIndicator) stopLoadingIndicator(loadingIndicator);
 			logger.error(
@@ -656,3 +705,4 @@ async function expandTask(
 }
 
 export default expandTask;
+export { generateExpandTaskPrompts, subtaskWrapperSchema };

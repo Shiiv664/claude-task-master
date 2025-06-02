@@ -14,7 +14,8 @@ import {
 } from '../ui.js';
 import { readJSON, writeJSON, log as consoleLog, truncate } from '../utils.js';
 import { generateObjectService } from '../ai-services-unified.js';
-import { getDefaultPriority } from '../config-manager.js';
+import { getDefaultPriority, isClaudeCliModeEnabled } from '../config-manager.js';
+import { addTaskWithCli } from '../claude-cli-provider.js';
 import generateTaskFiles from './generate-task-files.js';
 
 // Define Zod schema for the expected AI output object
@@ -36,6 +37,71 @@ const AiTaskDataSchema = z.object({
 			'Array of task IDs that this task depends on (must be completed before this task can start)'
 		)
 });
+
+/**
+ * Generate system and user prompts for task addition
+ * @param {Object} params - Prompt generation parameters
+ * @returns {Object} - { systemPrompt, userPrompt }
+ */
+function generateAddTaskPrompts(params) {
+	const {
+		newTaskId,
+		prompt,
+		contextTasks,
+		manualTaskData
+	} = params;
+
+	// System Prompt - Enhanced for dependency awareness
+	const systemPrompt =
+		"You are a helpful assistant that creates well-structured tasks for a software development project. Generate a single new task based on the user's description, adhering strictly to the provided JSON schema. Pay special attention to dependencies between tasks, ensuring the new task correctly references any tasks it depends on.\n\n" +
+		'When determining dependencies for a new task, follow these principles:\n' +
+		'1. Select dependencies based on logical requirements - what must be completed before this task can begin.\n' +
+		'2. Prioritize task dependencies that are semantically related to the functionality being built.\n' +
+		'3. Consider both direct dependencies (immediately prerequisite) and indirect dependencies.\n' +
+		'4. Avoid adding unnecessary dependencies - only include tasks that are genuinely prerequisite.\n' +
+		'5. Consider the current status of tasks - prefer completed tasks as dependencies when possible.\n' +
+		"6. Pay special attention to foundation tasks (1-5) but don't automatically include them without reason.\n" +
+		'7. Recent tasks (higher ID numbers) may be more relevant for newer functionality.\n\n' +
+		'The dependencies array should contain task IDs (numbers) of prerequisite tasks.\n';
+
+	// Task Structure Description (for user prompt)
+	const taskStructureDesc = `
+      {
+        "title": "Task title goes here",
+        "description": "A concise one or two sentence description of what the task involves",
+    "details": "Detailed implementation steps, considerations, code examples, or technical approach",
+    "testStrategy": "Specific steps to verify correct implementation and functionality",
+    "dependencies": [1, 3] // Example: IDs of tasks that must be completed before this task
+  }
+`;
+
+	// Add any manually provided details to the prompt for context
+	let contextFromArgs = '';
+	if (manualTaskData?.title)
+		contextFromArgs += `\n- Suggested Title: "${manualTaskData.title}"`;
+	if (manualTaskData?.description)
+		contextFromArgs += `\n- Suggested Description: "${manualTaskData.description}"`;
+	if (manualTaskData?.details)
+		contextFromArgs += `\n- Additional Details Context: "${manualTaskData.details}"`;
+	if (manualTaskData?.testStrategy)
+		contextFromArgs += `\n- Additional Test Strategy Context: "${manualTaskData.testStrategy}"`;
+
+	// User Prompt
+	const userPrompt = `You are generating the details for Task #${newTaskId}. Based on the user's request: "${prompt}", create a comprehensive new task for a software development project.
+      
+      ${contextTasks}
+      ${contextFromArgs ? `\nConsider these additional details provided by the user:${contextFromArgs}` : ''}
+      
+      Based on the information about existing tasks provided above, include appropriate dependencies in the "dependencies" array. Only include task IDs that this new task directly depends on.
+      
+      Return your answer as a single JSON object matching the schema precisely:
+      ${taskStructureDesc}
+      
+      Make sure the details and test strategy are comprehensive and specific. DO NOT include the task ID in the title.
+      `;
+
+	return { systemPrompt, userPrompt };
+}
 
 /**
  * Add a new task using AI
@@ -879,54 +945,13 @@ async function addTask(
 				console.log(); // Add spacing
 			}
 
-			// System Prompt - Enhanced for dependency awareness
-			const systemPrompt =
-				"You are a helpful assistant that creates well-structured tasks for a software development project. Generate a single new task based on the user's description, adhering strictly to the provided JSON schema. Pay special attention to dependencies between tasks, ensuring the new task correctly references any tasks it depends on.\n\n" +
-				'When determining dependencies for a new task, follow these principles:\n' +
-				'1. Select dependencies based on logical requirements - what must be completed before this task can begin.\n' +
-				'2. Prioritize task dependencies that are semantically related to the functionality being built.\n' +
-				'3. Consider both direct dependencies (immediately prerequisite) and indirect dependencies.\n' +
-				'4. Avoid adding unnecessary dependencies - only include tasks that are genuinely prerequisite.\n' +
-				'5. Consider the current status of tasks - prefer completed tasks as dependencies when possible.\n' +
-				"6. Pay special attention to foundation tasks (1-5) but don't automatically include them without reason.\n" +
-				'7. Recent tasks (higher ID numbers) may be more relevant for newer functionality.\n\n' +
-				'The dependencies array should contain task IDs (numbers) of prerequisite tasks.\n';
-
-			// Task Structure Description (for user prompt)
-			const taskStructureDesc = `
-      {
-        "title": "Task title goes here",
-        "description": "A concise one or two sentence description of what the task involves",
-    "details": "Detailed implementation steps, considerations, code examples, or technical approach",
-    "testStrategy": "Specific steps to verify correct implementation and functionality",
-    "dependencies": [1, 3] // Example: IDs of tasks that must be completed before this task
-  }
-`;
-
-			// Add any manually provided details to the prompt for context
-			let contextFromArgs = '';
-			if (manualTaskData?.title)
-				contextFromArgs += `\n- Suggested Title: "${manualTaskData.title}"`;
-			if (manualTaskData?.description)
-				contextFromArgs += `\n- Suggested Description: "${manualTaskData.description}"`;
-			if (manualTaskData?.details)
-				contextFromArgs += `\n- Additional Details Context: "${manualTaskData.details}"`;
-			if (manualTaskData?.testStrategy)
-				contextFromArgs += `\n- Additional Test Strategy Context: "${manualTaskData.testStrategy}"`;
-
-			// User Prompt
-			const userPrompt = `You are generating the details for Task #${newTaskId}. Based on the user's request: "${prompt}", create a comprehensive new task for a software development project.
-      
-      ${contextTasks}
-      ${contextFromArgs ? `\nConsider these additional details provided by the user:${contextFromArgs}` : ''}
-      
-      Based on the information about existing tasks provided above, include appropriate dependencies in the "dependencies" array. Only include task IDs that this new task directly depends on.
-      
-      Return your answer as a single JSON object matching the schema precisely:
-      ${taskStructureDesc}
-      
-      Make sure the details and test strategy are comprehensive and specific. DO NOT include the task ID in the title.
-      `;
+			// Generate prompts using shared function
+			const { systemPrompt, userPrompt } = generateAddTaskPrompts({
+				newTaskId,
+				prompt,
+				contextTasks,
+				manualTaskData
+			});
 
 			// Start the loading indicator - only for text mode
 			if (outputFormat === 'text') {
@@ -936,43 +961,58 @@ async function addTask(
 			}
 
 			try {
-				const serviceRole = useResearch ? 'research' : 'main';
-				report('DEBUG: Calling generateObjectService...', 'debug');
-
-				aiServiceResponse = await generateObjectService({
-					// Capture the full response
-					role: serviceRole,
-					session: session,
-					projectRoot: projectRoot,
-					schema: AiTaskDataSchema,
-					objectName: 'newTaskData',
-					systemPrompt: systemPrompt,
-					prompt: userPrompt,
-					commandName: commandName || 'add-task', // Use passed commandName or default
-					outputType: outputType || (isMCP ? 'mcp' : 'cli') // Use passed outputType or derive
-				});
-				report('DEBUG: generateObjectService returned successfully.', 'debug');
-
-				if (!aiServiceResponse || !aiServiceResponse.mainResult) {
-					throw new Error(
-						'AI service did not return the expected object structure.'
-					);
-				}
-
-				// Prefer mainResult if it looks like a valid task object, otherwise try mainResult.object
-				if (
-					aiServiceResponse.mainResult.title &&
-					aiServiceResponse.mainResult.description
-				) {
+				if (isClaudeCliModeEnabled()) {
+					// Use Claude CLI provider
+					report('DEBUG: Calling Claude CLI provider...', 'debug');
+					aiServiceResponse = await addTaskWithCli({
+						newTaskId,
+						prompt,
+						contextTasks,
+						manualTaskData,
+						useResearch
+					});
 					taskData = aiServiceResponse.mainResult;
-				} else if (
-					aiServiceResponse.mainResult.object &&
-					aiServiceResponse.mainResult.object.title &&
-					aiServiceResponse.mainResult.object.description
-				) {
-					taskData = aiServiceResponse.mainResult.object;
+					report('DEBUG: Claude CLI provider returned successfully.', 'debug');
 				} else {
-					throw new Error('AI service did not return a valid task object.');
+					// Use original API-based service
+					const serviceRole = useResearch ? 'research' : 'main';
+					report('DEBUG: Calling generateObjectService...', 'debug');
+
+					aiServiceResponse = await generateObjectService({
+						// Capture the full response
+						role: serviceRole,
+						session: session,
+						projectRoot: projectRoot,
+						schema: AiTaskDataSchema,
+						objectName: 'newTaskData',
+						systemPrompt: systemPrompt,
+						prompt: userPrompt,
+						commandName: commandName || 'add-task', // Use passed commandName or default
+						outputType: outputType || (isMCP ? 'mcp' : 'cli') // Use passed outputType or derive
+					});
+					report('DEBUG: generateObjectService returned successfully.', 'debug');
+
+					if (!aiServiceResponse || !aiServiceResponse.mainResult) {
+						throw new Error(
+							'AI service did not return the expected object structure.'
+						);
+					}
+
+					// Prefer mainResult if it looks like a valid task object, otherwise try mainResult.object
+					if (
+						aiServiceResponse.mainResult.title &&
+						aiServiceResponse.mainResult.description
+					) {
+						taskData = aiServiceResponse.mainResult;
+					} else if (
+						aiServiceResponse.mainResult.object &&
+						aiServiceResponse.mainResult.object.title &&
+						aiServiceResponse.mainResult.object.description
+					) {
+						taskData = aiServiceResponse.mainResult.object;
+					} else {
+						throw new Error('AI service did not return a valid task object.');
+					}
 				}
 
 				report('Successfully generated task data from AI.', 'success');
@@ -1206,3 +1246,4 @@ async function addTask(
 }
 
 export default addTask;
+export { generateAddTaskPrompts, AiTaskDataSchema };

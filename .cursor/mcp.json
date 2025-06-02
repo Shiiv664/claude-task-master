@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"task-master-ai": {
+			"command": "node",
+			"args": ["./mcp-server/server.js"],
+			"env": {
+				"CLAUDE_CLI_MODE": "true"
+			}
+		}
+	}
+}

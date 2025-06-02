@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  task-master-mcp:
+    build: 
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: task-master-mcp
+    volumes:
+      # Mount project data for persistence
+      - task-master-data:/workspace/task-master/.taskmaster
+      # Optional: mount host directory for development
+      # - ./project-data:/workspace/task-master/.taskmaster
+    environment:
+      # Enable CLI mode by default in container
+      - CLAUDE_CLI_MODE=true
+      # Optional: API keys if not using CLI mode
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    restart: unless-stopped
+    # Keep container running for MCP exec commands
+    stdin_open: true
+    tty: true
+
+volumes:
+  task-master-data:

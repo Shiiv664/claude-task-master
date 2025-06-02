@@ -1,0 +1,83 @@
+# Docker ignore file for Task Master MCP Server
+
+# Node modules (will be installed in container)
+node_modules/
+npm-debug.log*
+
+# Git files
+.git/
+.gitignore
+
+# Development files
+docker/
+.vscode/
+.cursor/
+*.md
+!README.md
+
+# Test files
+tests/
+*.test.js
+coverage/
+
+# Build artifacts
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# Environment files (use docker-compose env instead)
+.env
+.env.local
+.env.*.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Task Master specific
+.taskmaster/tasks/
+.taskmaster/reports/
+scripts/task-complexity-report.json
+tasks/
+
+# Documentation that's not needed in container
+docs/
+claude-cli-integration/
+assets/

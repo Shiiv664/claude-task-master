@@ -6,6 +6,15 @@ import { log, findProjectRoot, resolveEnvVariable } from './utils.js';
 import { LEGACY_CONFIG_FILE } from '../../src/constants/paths.js';
 import { findConfigPath } from '../../src/utils/path-utils.js';
 
+/**
+ * Detect if we're running in MCP server context to suppress stdout logging
+ * that could contaminate the JSON protocol
+ */
+function isMcpContext() {
+	return process.env.MCP_SERVER_MODE === 'true' || 
+		process.argv.some(arg => arg.includes('mcp-server') || arg.includes('fastmcp'));
+}
+
 // Calculate __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -128,7 +137,7 @@ function _loadAndValidateConfig(explicitRoot = null) {
 			configSource = `file (${configPath})`; // Update source info
 
 			// Issue deprecation warning if using legacy config file
-			if (isLegacy) {
+			if (isLegacy && !isMcpContext()) {
 				console.warn(
 					chalk.yellow(
 						`⚠️  DEPRECATION WARNING: Found configuration in legacy location '${configPath}'. Please migrate to .taskmaster/config.json. Run 'task-master migrate' to automatically migrate your project.`
@@ -139,40 +148,48 @@ function _loadAndValidateConfig(explicitRoot = null) {
 			// --- Validation (Warn if file content is invalid) ---
 			// Use log.warn for consistency
 			if (!validateProvider(config.models.main.provider)) {
-				console.warn(
-					chalk.yellow(
-						`Warning: Invalid main provider "${config.models.main.provider}" in ${configPath}. Falling back to default.`
-					)
-				);
+				if (!isMcpContext()) {
+					console.warn(
+						chalk.yellow(
+							`Warning: Invalid main provider "${config.models.main.provider}" in ${configPath}. Falling back to default.`
+						)
+					);
+				}
 				config.models.main = { ...defaults.models.main };
 			}
 			if (!validateProvider(config.models.research.provider)) {
-				console.warn(
-					chalk.yellow(
-						`Warning: Invalid research provider "${config.models.research.provider}" in ${configPath}. Falling back to default.`
-					)
-				);
+				if (!isMcpContext()) {
+					console.warn(
+						chalk.yellow(
+							`Warning: Invalid research provider "${config.models.research.provider}" in ${configPath}. Falling back to default.`
+						)
+					);
+				}
 				config.models.research = { ...defaults.models.research };
 			}
 			if (
 				config.models.fallback?.provider &&
 				!validateProvider(config.models.fallback.provider)
 			) {
-				console.warn(
-					chalk.yellow(
-						`Warning: Invalid fallback provider "${config.models.fallback.provider}" in ${configPath}. Fallback model configuration will be ignored.`
-					)
-				);
+				if (!isMcpContext()) {
+					console.warn(
+						chalk.yellow(
+							`Warning: Invalid fallback provider "${config.models.fallback.provider}" in ${configPath}. Fallback model configuration will be ignored.`
+						)
+					);
+				}
 				config.models.fallback.provider = undefined;
 				config.models.fallback.modelId = undefined;
 			}
 		} catch (error) {
 			// Use console.error for actual errors during parsing
-			console.error(
-				chalk.red(
-					`Error reading or parsing ${configPath}: ${error.message}. Using default configuration.`
-				)
-			);
+			if (!isMcpContext()) {
+				console.error(
+					chalk.red(
+						`Error reading or parsing ${configPath}: ${error.message}. Using default configuration.`
+					)
+				);
+			}
 			config = { ...defaults }; // Reset to defaults on parse error
 			configSource = `defaults (parse error at ${configPath})`;
 		}
@@ -180,17 +197,21 @@ function _loadAndValidateConfig(explicitRoot = null) {
 		// Config file doesn't exist at the determined rootToUse.
 		if (explicitRoot) {
 			// Only warn if an explicit root was *expected*.
-			console.warn(
-				chalk.yellow(
-					`Warning: Configuration file not found at provided project root (${explicitRoot}). Using default configuration. Run 'task-master models --setup' to configure.`
-				)
-			);
+			if (!isMcpContext()) {
+				console.warn(
+					chalk.yellow(
+						`Warning: Configuration file not found at provided project root (${explicitRoot}). Using default configuration. Run 'task-master models --setup' to configure.`
+					)
+				);
+			}
 		} else {
-			console.warn(
-				chalk.yellow(
-					`Warning: Configuration file not found at derived root (${rootToUse}). Using defaults.`
-				)
-			);
+			if (!isMcpContext()) {
+				console.warn(
+					chalk.yellow(
+						`Warning: Configuration file not found at derived root (${rootToUse}). Using defaults.`
+					)
+				);
+			}
 		}
 		// Keep config as defaults
 		config = { ...defaults };
@@ -519,9 +540,11 @@ function isApiKeySet(providerName, session = null, projectRoot = null) {
 function getMcpApiKeyStatus(providerName, projectRoot = null) {
 	const rootDir = projectRoot || findProjectRoot(); // Use existing root finding
 	if (!rootDir) {
-		console.warn(
-			chalk.yellow('Warning: Could not find project root to check mcp.json.')
-		);
+		if (!isMcpContext()) {
+			console.warn(
+				chalk.yellow('Warning: Could not find project root to check mcp.json.')
+			);
+		}
 		return false; // Cannot check without root
 	}
 	const mcpConfigPath = path.join(rootDir, '.cursor', 'mcp.json');
@@ -589,9 +612,11 @@ function getMcpApiKeyStatus(providerName, projectRoot = null) {
 
 		return !!apiKeyToCheck && !/KEY_HERE$/.test(apiKeyToCheck);
 	} catch (error) {
-		console.error(
-			chalk.red(`Error reading or parsing .cursor/mcp.json: ${error.message}`)
-		);
+		if (!isMcpContext()) {
+			console.error(
+				chalk.red(`Error reading or parsing .cursor/mcp.json: ${error.message}`)
+			);
+		}
 		return false;
 	}
 }
@@ -658,11 +683,13 @@ function writeConfig(config, explicitRoot = null) {
 		// Logic matching _loadAndValidateConfig
 		const foundRoot = findProjectRoot(); // *** Explicitly call findProjectRoot ***
 		if (!foundRoot) {
-			console.error(
-				chalk.red(
-					'Error: Could not determine project root. Configuration not saved.'
-				)
-			);
+			if (!isMcpContext()) {
+				console.error(
+					chalk.red(
+						'Error: Could not determine project root. Configuration not saved.'
+					)
+				);
+			}
 			return false;
 		}
 		rootPath = foundRoot;
@@ -683,11 +710,13 @@ function writeConfig(config, explicitRoot = null) {
 		loadedConfig = config; // Update the cache after successful write
 		return true;
 	} catch (error) {
-		console.error(
-			chalk.red(
-				`Error writing configuration to ${configPath}: ${error.message}`
-			)
-		);
+		if (!isMcpContext()) {
+			console.error(
+				chalk.red(
+					`Error writing configuration to ${configPath}: ${error.message}`
+				)
+			);
+		}
 		return false;
 	}
 }

@@ -7,6 +7,9 @@ import logger from './src/logger.js';
 // Load environment variables
 dotenv.config();
 
+// Set MCP server mode to suppress stdout logging that could contaminate JSON protocol
+process.env.MCP_SERVER_MODE = 'true';
+
 /**
  * Start the MCP server
  */

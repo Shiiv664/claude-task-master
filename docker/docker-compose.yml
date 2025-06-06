@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   task-master-mcp:
     build: 
@@ -9,8 +7,8 @@ services:
     volumes:
       # Mount project data for persistence
       - task-master-data:/workspace/task-master/.taskmaster
-      # Optional: mount host directory for development
-      # - ./project-data:/workspace/task-master/.taskmaster
+      # Mount our dev workspace
+      - /home/shiiv/_dev:/home/shiiv/_dev
     environment:
       # Enable CLI mode by default in container
       - CLAUDE_CLI_MODE=true
